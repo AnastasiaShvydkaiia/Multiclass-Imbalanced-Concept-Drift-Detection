@@ -16,6 +16,9 @@ This thesis investigates concept drift detection in multi-class imbalanced data 
 ├── requirements.txt # Python dependencies
 └── README.md 
 ```
+
+Insects dataset can be downloaded from here: https://sites.google.com/view/uspdsrepository
+
 ## Running Streamlit demo
 
 1. Clone the repository:
