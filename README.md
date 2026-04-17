@@ -7,7 +7,7 @@ This thesis investigates concept drift detection in multi-class imbalanced data 
 ├── app.py # Streamlit demo application
 ├── detectors.py # AE, ADWIN and KSWIN wrapper
 ├── metrics.py # Metric tracker fro evaluation
-├── classifier.py # Classifier wrapper
+├── classifier.py # Hoefdings tree classifier wrapper
 ├── stream_generator.py # RandomRBF stream generator
 ├── data/ # Real datasets 
 │ ├── INSECTS abrupt_imbalanced.csv
