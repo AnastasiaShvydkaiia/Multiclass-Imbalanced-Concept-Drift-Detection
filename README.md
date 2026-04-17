@@ -1,4 +1,4 @@
-# Concept Drift Detection in Multi-class Imbalanced Data Streams using Autoencoders
+# Concept Drift Detection in Multi-class Imbalanced Data Streams
 This thesis investigates concept drift detection in multi-class imbalanced data streams. ADWIN, KSWIN,  Autoencoder methods are evaluated on synthetic data streams (Random RBF, Rotating Hyperplane) and real-world Insects dataset.
 ## Project Structure
 ```bash
