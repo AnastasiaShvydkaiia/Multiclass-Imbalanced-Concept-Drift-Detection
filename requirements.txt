@@ -1,0 +1,8 @@
+river
+torch
+pandas
+numpy
+matplotlib
+seaborn
+streamlit
+ipykernel
