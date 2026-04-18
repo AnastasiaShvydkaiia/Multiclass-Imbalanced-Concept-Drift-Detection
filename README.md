@@ -1,6 +1,35 @@
 # Concept Drift Detection in Multi-class Imbalanced Data Streams
-This thesis investigates concept drift detection in multi-class imbalanced data streams. ADWIN, KSWIN,  Autoencoder methods are evaluated on synthetic data streams (Random RBF, Rotating Hyperplane) and real-world Insects dataset.
-## Project Structure
+This thesis investigates concept drift detection in multi-class imbalanced data streams.
+
+## Current Implemention
+
+1. Data Stream Synthesis:
+    - **Hyperplane Generator**: Rotating hyperplanes for simulating complex boundary drifts.
+    - **Random RBF Generator**: Radial basis functions for modeling cluster drift.
+
+2. Drift Detection Framework:
+    - **Baselines**: ADWIN (Adaptive Windowing) and KSWIN (Kolmogorov-Smirnov Windowing).
+    - **Proposed Method**: DHAE (Dual-head Autoencoder).
+
+3. Analysis:
+    - **Metrics Tracker**: Prequential evaluation with Accuracy, G-Mean, detection delay, false alarms
+    - **Interactive Demo**: A Streamlit-based web interface for testing detectors in real time.
+
+## Preliminary results
+Performance comparison across three detectors on the Random RBF dataset with 3 abrupt concept drifts (at positions 5000, 10000 and 15000) based on 3 runs: 
+
+| Detector | Prequential Accuracy | G-Mean | Detection Delay | False Alarms |
+|:---|:---|:---|:---|:---|
+| **ADWIN** | 76.6% | 73.8% | 282 | 45 |
+| **KSWIN** | 74.4% | 71.5% | 1543 | 0.33 |
+| **DHAE** | **88.1%** | **87.1%** | **105** | **0** |
+
+Prequential plot:
+![alt text](img/image.png)
+
+> [!NOTE]
+> Final results will include 10 runs with standard deviations.
+## Current Project Structure
 ```bash
 .
 ├── data/ # Real datasets 
@@ -34,3 +63,7 @@ pip install -r requirements.txt
 ```
 streamlit run app.py
 ```
+## To Do
+- Complete experiments for 10 runs across all datasets.
+-  Implement significance testing (e.g., Friedman test) to compare drift detectors' performance.
+- Generate final result tables and figures for thesis
