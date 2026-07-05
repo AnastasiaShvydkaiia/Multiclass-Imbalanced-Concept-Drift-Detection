@@ -1,7 +1,13 @@
-from river.drift import ADWIN, KSWIN
+from river.drift import ADWIN, KSWIN, PageHinkley
+from river.drift.binary import DDM
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import roc_auc_score as AUC
+from sklearn.model_selection import StratifiedKFold
+
 
 class DriftDetector:
     def __init__(self, name,n_features=10, n_classes=3):
@@ -13,19 +19,26 @@ class DriftDetector:
 
     def _create_detector(self):
         if self.name == "KSWIN":  
-            return KSWIN(alpha=0.0001, window_size=300, stat_size=30)
-        elif self.name=="DHAE":
-            return DHAE(n_features= self.n_features,n_classes=self.n_classes, lambda_p=5) 
-        else:
-            return ADWIN(delta=0.001) 
+            return KSWIN(alpha=0.0001, window_size=300, stat_size=30) 
+        elif self.name=="ADWIN":
+            return ADWIN(delta=0.01) 
+        elif self.name=="PH":
+            return PageHinkley(delta=0.005, threshold=50, min_instances=30) 
+        elif self.name=="DDM":
+            return DDM()
+        elif self.name=="AEDD":
+            return AEDD(n_features=self.n_features, delta=0.005)
+        elif self.name=="D3":
+            return D3(w=300,threshold=0.75)
         
-    def update(self, smooth_error, probas, x):
+    def update(self, smooth_error, x):
         self.drift_detected = False 
-        if self.name=="KSWIN":
+        if self.name =="KSWIN":
             self.drift_detector= self.detector.update(x[0])
             self.drift_detected = self.detector.drift_detected
-        elif self.name == "DHAE":
-            self.drift_detected = self.detector.update(x, probas)
+        elif self.name in ["D3","AEDD"]:
+            self.drift_detector= self.detector.update(x)
+            self.drift_detected = self.detector.drift_detected
         else: 
             self.detector.update(smooth_error)
             self.drift_detected = self.detector.drift_detected
@@ -39,145 +52,142 @@ class DriftDetector:
                 self.detector.pretrain(train_X,epochs)
                 self.trained = True
 
-class Autoencoder(nn.Module):
-    def __init__(self, x_dim, p_dim, hidden_dim=16, latent_dim=8):
-        super().__init__()
 
-        self.x_dim = x_dim
-        self.p_dim = p_dim
-        self.input_dim = x_dim + p_dim
+class D3:
+    """Implementation of the Discriminative Drift Detector (D3) based on Gözüaçik et al."""
+    def __init__(self, w=1000, rho=0.1, threshold=0.75):
+        self.w = w                 
+        self.rho = rho              
+        self.threshold = threshold  
+        
+        self.size = int(w * (1 + rho)) 
+        self.dim = None
+        self.buffer = []
+        self.step = 0
 
-        # Shared encoder
-        self.encoder = nn.Sequential(
-            nn.Linear(self.input_dim, hidden_dim),
+        self.drift_detected=False
+
+    def update(self, x, **kwargs):
+        self.step += 1
+        features = np.fromiter(x.values(), dtype=float) if isinstance(x, dict) else np.array(x)
+        
+        if self.dim is None:
+            self.dim = len(features)
+            
+        self.buffer.append(features)
+
+        if len(self.buffer) < self.size:
+            self.drift_detected=False
+            return self.drift_detected
+
+        if self._drift_check():
+            new_data_start = self.w
+            self.buffer = self.buffer[new_data_start:]
+            self.drift_detected=True
+            return self.drift_detected
+        else:
+            shift = int(self.w * self.rho)
+            self.buffer = self.buffer[shift:]
+            self.drift_detected=False
+            return self.drift_detected
+
+    def _drift_check(self):
+        data = np.array(self.buffer)
+        
+        S = data[:self.w]
+        T = data[self.w:]
+        
+        labels = np.zeros(len(data))
+        labels[:self.w] = 1 
+        
+        clf = LogisticRegression(solver='liblinear', max_iter=1000)
+        predictions = np.zeros(labels.shape)
+        
+        skf = StratifiedKFold(n_splits=2, shuffle=True)
+        try:
+            for train_idx, test_idx in skf.split(data, labels):
+                X_train, X_test = data[train_idx], data[test_idx]
+                y_train, y_test = labels[train_idx], labels[test_idx]
+                
+                clf.fit(X_train, y_train)
+                probs = clf.predict_proba(X_test)[:, 1]
+                predictions[test_idx] = probs
+                
+            auc_score = AUC(labels, predictions)
+            return auc_score > self.threshold
+        except Exception as e:
+            print(e)
+            self.drift_detected=False
+            return self.drift_detected
+
+class AEDD: 
+    def __init__(self, n_features, hidden_dim=16, latent_dim=8, lr=1e-3, delta=0.002):
+        self.model = nn.Sequential(
+            nn.Linear(n_features, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, latent_dim),
-            nn.ReLU()
-        )
-
-        # Feature decoder
-        self.decoder_x = nn.Sequential(
+            nn.ReLU(),
             nn.Linear(latent_dim, hidden_dim),
             nn.ReLU(),
-            nn.Linear(hidden_dim, x_dim)
+            nn.Linear(hidden_dim, n_features)
         )
-
-        # Probability decoder
-        self.decoder_p = nn.Sequential(
-            nn.Linear(latent_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, p_dim),
-            nn.Softmax(dim=1) 
-        )
-
-    def forward(self, x, p):
-        z = torch.cat([x, p], dim=1)
-        h = self.encoder(z)
-
-        x_hat = self.decoder_x(h)
-        p_hat = self.decoder_p(h)
-
-        return x_hat, p_hat
-    
-class DHAE: # Dual Head AutoEncoder
-    def __init__(
-        self,
-        n_features,
-        n_classes,
-        hidden_dim=16,
-        latent_dim=8,
-        lr=1e-3,
-        lambda_x=0.5,
-        lambda_p=0.5, 
-        adwin_delta=0.002
-    ):
-        self.model = Autoencoder(n_features, n_classes, hidden_dim, latent_dim)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
-
-        self.lambda_x = lambda_x
-        self.lambda_p = lambda_p
-
-        self.adwin = ADWIN(delta=adwin_delta)
-
-        self.cooldown = 200
-        self.cooldown_counter = 0
-
-        self.n_classes=n_classes
-
-    def _compute_loss(self, x, x_hat, p, p_hat):
-        loss_x = F.mse_loss(x_hat, x)
-        loss_p = F.mse_loss(p_hat, p)
-
-        total_loss = self.lambda_x * loss_x + self.lambda_p * loss_p
-        return total_loss 
-
-    def update(self, x, probas):
-        if self.cooldown_counter > 0:
-            self.cooldown_counter -= 1
-            return False 
         
-        if not probas:
-            probas = {c: 1.0 / self.n_classes for c in range(self.n_classes)}
-        p_list = [probas.get(c, 1e-3) for c in range(self.n_classes)]
-        if sum(p_list) == 0:
-            p_list = [1.0 / self.n_classes] * self.n_classes
+        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        
+        self.adwin = ADWIN(delta=delta)
+        
+        self.step = 0
+        self.warmup_steps = 300
+        
+        self.is_adapting = False
+        self.adaptation_counter = 0
+        self.min_adaptation_steps = 100
 
-        x_tensor = torch.FloatTensor(x).unsqueeze(0)
-        p_tensor = torch.FloatTensor(p_list).unsqueeze(0)
+        self.drift_detected=False
 
-        self.model.eval()
-        with torch.no_grad():
-            x_hat, p_hat = self.model(x_tensor, p_tensor)
-
-            total_loss= self._compute_loss(
-                x_tensor, x_hat, p_tensor, p_hat
-            )
-
-        score = total_loss.item()
-
-        # Drift detection 
-        self.adwin.update(score)
-
-        if self.adwin.drift_detected:
-            self.cooldown_counter = self.cooldown
-            return True 
-
-        # Training only when stable
-        if score < 0.09:
-            self._train_step(x_tensor, p_tensor)  
-
-        return False 
-
-    def _train_step(self, x, p):
+    def _train_step(self, x_tensor):
         self.model.train()
         self.optimizer.zero_grad()
-
-        x_hat, p_hat = self.model(x, p)
-
-        total_loss = self._compute_loss(x, x_hat, p, p_hat)
-
-        total_loss.backward()
+        x_hat = self.model(x_tensor)
+        loss = F.mse_loss(x_hat, x_tensor)
+        loss.backward()
+        torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
         self.optimizer.step()
+        return loss.item()
 
-    def pretrain(self, X, P, epochs=5):
-        self.model.train()
+    def update(self, x, **kwargs):
+        self.step += 1
+        
+        x_vals = list(x.values()) if isinstance(x, dict) else x
+        x_tensor = torch.FloatTensor(x_vals).unsqueeze(0)
+        
+        self.model.eval()
+        with torch.no_grad():
+            x_hat = self.model(x_tensor)
+            current_loss = current_loss = torch.norm(x_tensor - x_hat,p=2,dim=1).item()
 
-        for epoch in range(epochs):
-            total_loss = 0
+        # WARMUP 
+        if self.step <= self.warmup_steps:
+            self._train_step(x_tensor)
+            self.drift_detected=False
+            return self.drift_detected
 
-            for x_raw, p_raw in zip(X, P):
-                x = torch.FloatTensor(x_raw).unsqueeze(0)
-                p = torch.FloatTensor(p_raw).unsqueeze(0)
-
-                self.optimizer.zero_grad()
-
-                x_hat, p_hat = self.model(x, p)
-                loss = self._compute_loss(x, x_hat, p, p_hat)
-
-                loss.backward()
-                self.optimizer.step()
-
-                total_loss += loss.item()
-
-            print(f"Epoch {epoch}: {total_loss / len(X):.6f}")
-
+        # ADAPTATION 
+        if self.is_adapting:
+            self._train_step(x_tensor)
+            self.adaptation_counter += 1
+            if self.adaptation_counter >= self.min_adaptation_steps:
+                self.is_adapting = False
+            self.drift_detected=False
+            return self.drift_detected
+        
+        # MONITORING
+        self.adwin.update(current_loss)
+        
+        if self.adwin.drift_detected:
+            self.is_adapting = True
+            self.adaptation_counter = 0
+            self.drift_detected=True
+            return self.drift_detected 
+        self.drift_detected=False
+        return self.drift_detected

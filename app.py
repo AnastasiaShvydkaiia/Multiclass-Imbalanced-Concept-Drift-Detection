@@ -45,9 +45,9 @@ col1, col2, col3 = st.columns(3)
 
 drift_type = col1.selectbox("Drift Type", ["real", "virtual"])
 drift_speed = col2.selectbox("Drift Speed", ["sudden", "gradual"])
-drift_intensity = col3.selectbox("Drift Intensity", ["global", "local"])
+drift_intensity = col3.selectbox("Drift Influence Zone", ["global", "local"])
 imbalance = st.selectbox("Imbalance Ratio", ["1:1:1", "3:2:1", "5:2:1","10:1:1"])
-detector_name = st.selectbox("Detector", ["ADWIN", "KSWIN", "DHAE"])
+detector_name = st.selectbox("Detector", ["ADWIN", "AEDD", "DDM", "D3", "KSWIN", "PH"])
 
 c1, c2, c3 = st.columns(3)
 
@@ -75,13 +75,12 @@ if st.session_state.running and st.session_state.stream:
         for _ in range(window): 
             x, y, step = next(st.session_state.stream)
             y_pred = st.session_state.clf.predict(x)
-            probas= st.session_state.clf.predict_proba(x)
             error = int(y_pred != y)
             st.session_state.err_window.append(error)
             smooth_error = np.mean(st.session_state.err_window)
 
             # Drift detection
-            st.session_state.detector.update(smooth_error, probas, x)
+            st.session_state.detector.update(smooth_error, x)
             drift_detected = st.session_state.detector.detected()
         
             # Update metrics
@@ -180,48 +179,40 @@ stats = st.session_state.metrics.get_metrics()
 total_alarms = stats['drifts_detected'] + stats.get('false_alarms', 0)
 far = (stats.get('false_alarms', 0) / total_alarms) if total_alarms > 0 else 0.0
 
-col_det1, col_det2, col_det3 = st.columns(3)
+col_det1, col_det2, col_det3, col_det4 = st.columns(4)
 st.write("") 
-col_mod1, col_mod2 = st.columns(2)
 
 with col_det1:
     st.metric(
-        label="Harmonic Drift Detection", 
-        value=f"{stats['h_dd']:.3f}",
-        help="Measures the overall quality of the drift detector in distinguishing between windows with and without drift"
-    )
-
-with col_det2:
-    st.metric(
-        label="Avg Detection Delay", 
+        label="MTD", 
         value=f"{stats['avg_detection_delay']:.1f} steps",
         help="Average number of steps between detection and drift"
     )
 
-with col_det3:
+with col_det2:
     st.metric(
-        label="False Alarm Rate (FAR)", 
+        label="FAR", 
         value=f"{far:.1%}",
         help="A proportion of false alarms from the total number of detector signals"
     )
 
-with col_mod1:
+with col_det3:
     st.metric(
         label="G-Mean", 
         value=f"{stats['g_mean']:.3f}",
         help="Measures how effectively the system maintains classification quality, particularly for minority classes"
     )
 
-with col_mod2:
+with col_det4:
     st.metric(
         label="Accuracy", 
         value=f"{stats['en_accuracy']:.2%}",
-        help="A proportion of correctly identified drifted windows"
+        help="A ratio of correctly predicted instances to the total number of data points evaluated"
     )
 
 # ================LOOP REFRESH======================
 if st.session_state.running:
-    time.sleep(1)
+    time.sleep(0.1)
     st.rerun()
 
 
