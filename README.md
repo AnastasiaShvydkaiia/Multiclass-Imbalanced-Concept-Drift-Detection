@@ -82,14 +82,13 @@ User Interface:
 > [!NOTE]
 > Red dashed vertical lines (-- ) indicate manual drift injections, while solid green lines (—) pinpoint algorithmic detection flags.
 
-### Evaluation Statistics Section
+### 4. Evaluation Statistics Section
 * **Mean Time to Detection (MTD):** Quantifies the average number of steps between detection and drift.
 * **False Alarm Rate (FAR):** Measures the empirical proportion of false alarms relative to the all alerts.
 * **Geometric Mean (G-Mean):** Measures how effectively the system maintains classification quality, particularly for minority classes.
 * **Accuracy:** Records the ratio of correctly predicted instances to the total number of data points evaluated.
 
-
-### Local deployment
+### 5. Local deployment
 
 1. Clone the repository:
 ```
