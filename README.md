@@ -11,7 +11,7 @@ This thesis investigates the performance of concept drift detection methods in m
 
 2. Drift Detection Framework:
     - **Supervised drift detectors**: DDM (Drift Detection Method), ADWIN (Adaptive Windowing), and PH (Page-Hinkley test)
-    - **Unsupervised drift detectors** D3 (Discriminative Drift Detector), AEDD (Autoencoder-based Drift Detector), and PCA-KSWIN (Kolmogorov-Smirnov Windowing).
+    - **Unsupervised drift detectors** D3 (Discriminative Drift Detector), AEDD (Autoencoder-based Drift Detector), and KSWIN (Kolmogorov-Smirnov Windowing).
     
 
 3. Analysis:
